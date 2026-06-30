@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>大理洱海酒店地图</title>
+<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background: #f5f5f5; }
+
+  /* ====== Header ====== */
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: white; padding: 14px 16px; text-align: center;
+    position: sticky; top: 0; z-index: 1000;
+  }
+  .header h1 { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+  .header span { font-size: 12px; opacity: 0.7; }
+
+  /* ====== Map ====== */
+  #map { height: 55vh; width: 100%; }
+
+  /* ====== Section Nav ====== */
+  .section-nav {
+    display: flex; background: white; border-bottom: 1px solid #eee;
+    position: sticky; top: 0; z-index: 999;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .section-nav a {
+    flex: 0 0 auto; padding: 10px 14px; font-size: 13px; color: #666;
+    text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent;
+  }
+  .section-nav a.active { color: #1a1a2e; border-bottom-color: #1a1a2e; font-weight: 600; }
+
+  /* ====== Hotel List ====== */
+  .list-container { padding: 8px 12px 24px; }
+
+  .region-title {
+    font-size: 15px; font-weight: 700; color: #333;
+    margin: 16px 0 8px; padding-left: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .region-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+  .hotel-card {
+    background: white; border-radius: 10px; padding: 14px;
+    margin-bottom: 8px; cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    transition: transform 0.15s;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .hotel-card:active { transform: scale(0.98); }
+  .hotel-card .idx {
+    width: 26px; height: 26px; border-radius: 50%;
+    color: white; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .hotel-card .info { flex: 1; min-width: 0; }
+  .hotel-card .info h3 { font-size: 14px; color: #1a1a2e; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hotel-card .info .addr { font-size: 12px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hotel-card .info .meta { font-size: 11px; color: #aaa; margin-top: 2px; }
+  .hotel-card .arrow { color: #ccc; font-size: 16px; flex-shrink: 0; }
+
+  /* ====== Popup ====== */
+  .hotel-popup { max-width: 280px; }
+  .hotel-popup h3 { font-size: 15px; margin-bottom: 6px; color: #1a1a2e; }
+  .hotel-popup .addr { font-size: 13px; color: #555; margin-bottom: 4px; }
+  .hotel-popup .meta { font-size: 12px; color: #888; }
+  .hotel-popup .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-top: 6px; margin-right: 4px; color: white; }
+  .ctrip-btn { display: inline-block; margin-top: 8px; padding: 5px 14px; background: #1677ff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; }
+
+  /* ====== Legend (floating on map) ====== */
+  .map-legend {
+    background: rgba(255,255,255,0.92); padding: 8px 10px; border-radius: 6px;
+    font-size: 11px; line-height: 1.6; box-shadow: 0 1px 6px rgba(0,0,0,0.12);
+  }
+  .map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+  .map-legend .lm { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #999; margin-right: 4px; }
+
+  /* ====== Tag colors ====== */
+  .tag-old-town { background: #e07a5f; }
+  .tag-west-bank { background: #3d85c6; }
+  .tag-xiaguan { background: #6c5ce7; }
+  .tag-east-bank { background: #00b894; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏨 大理洱海酒店地图</h1>
+  <span>18家精选酒店 · 点击卡片地图定位</span>
+</div>
+<div id="map"></div>
+
+<div class="section-nav" id="sectionNav">
+  <a href="#region-oldtown" class="active" data-region="古城">🟠 古城</a>
+  <a href="#region-west" data-region="西岸">🔵 洱海西岸</a>
+  <a href="#region-xiaguan" data-region="下关">🟣 下关</a>
+  <a href="#region-east" data-region="海东">🟢 海东</a>
+</div>
+
+<div class="list-container" id="hotelList"></div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+// ====== Region colors ======
+const regionColors = { '古城': '#e07a5f', '西岸': '#3d85c6', '下关': '#6c5ce7', '海东': '#00b894' };
+
+// ====== Hotels (GCJ-02 coords from Amap API) ======
+const hotels = [
+  { name:"大理古城花间府·松语", ctrip:"131828867", lat:25.686347,lng:100.158308, addr:"大理镇一塔巷1号", rooms:"119间", open:"2025年", group:"古城", note:"华住花间系列，25亩松林花园，苍山脚下" },
+  { name:"若留·茗月堂园林设计师度假民宿", ctrip:"21785314", lat:25.704510,lng:100.157739, addr:"大理古城北门街168号", rooms:"21间", open:"2018年", group:"古城", note:"四进园林庭院，200年金桂+千年古树" },
+  { name:"大理古城悦山海伴山墅奢酒店", ctrip:"80336381", lat:25.679596,lng:100.155028, addr:"大理镇弘圣路21号", rooms:"149间", open:"2021年", group:"古城", note:"恒温泳池+水疗，毗邻古城" },
+  { name:"大理THEONE古城一号院", ctrip:"514254", lat:25.688009,lng:100.161050, addr:"古城博爱路9号", rooms:"101间", open:"2013年", group:"古城", note:"古城核心庭院式，步行人民路" },
+  { name:"大理颐雲酒店", ctrip:"50176516", lat:25.697766,lng:100.136898, addr:"大理镇三文笔村崇圣寺以南", rooms:"147间", open:"2019年", group:"古城", note:"五星别墅，80%客房带独立汤泉" },
+  { name:"乐府里｜龙龛畔·八亩隐奢庭院", ctrip:"133270569", lat:25.691480,lng:100.207980, addr:"大理镇龙龛村委会一组", rooms:"新开业", open:"2026年", group:"西岸", note:"8亩新中式庭院，近龙龛码头" },
+  { name:"大理宿心禾·至臻·沉浸式海景设计师民宿", ctrip:"133539056", lat:25.676058,lng:100.209661, addr:"环海西路南罗久邑4组6号", rooms:"6间", open:"2025年", group:"西岸", note:"纯白极简，出门即洱海生态廊道" },
+  { name:"大理忘下山海景民宿（才村码头店）", ctrip:"134533088", lat:25.716966,lng:100.190521, addr:"大理镇才村村委会17组33号", rooms:"精品", open:"2026年", group:"西岸", note:"紧贴洱海，才村码头旁，一线海景" },
+  { name:"大理青绿海的呼吸半山民宿", ctrip:"80834665", lat:25.603814,lng:100.250340, addr:"滨海大道洱海天域畔山B区B28", rooms:"5间", open:"2021年", group:"下关", note:"西班牙设计，每间配私人泳池/泡池" },
+  { name:"大理丽舍海景套房民宿", ctrip:"878958", lat:25.600996,lng:100.237217, addr:"下关镇漾濞路36号洱海天域B栋20-29层", rooms:"19间", open:"2018年", group:"下关", note:"高层全海景，大理港游轮码头对面" },
+  { name:"大理麓悦洱海度假酒店", ctrip:"47780016", lat:25.592749,lng:100.225554, addr:"下关镇平安路2号", rooms:"158间", open:"2019年", group:"下关", note:"豪华型，Art Deco+中式美学" },
+  { name:"大理无二隐舍·VILLA半山海景民宿", ctrip:"101212671", lat:25.741553,lng:100.227701, addr:"海东镇文笔村3社74号", rooms:"19间", open:"2022年", group:"海东", note:"文笔村半山，无边泳池，日落晚霞" },
+  { name:"大理十九山·全海景Villa别墅", ctrip:"71391763", lat:25.663470,lng:100.277693, addr:"海东镇梦云南海东方A7幢", rooms:"12间", open:"2021年", group:"海东", note:"270°全海景，半山独栋别墅" },
+  { name:"海照山·270度悬崖海景Holiday别墅", ctrip:"78459312", lat:25.663470,lng:100.277693, addr:"海东镇梦云南海东方一期46幢A107", rooms:"16间", open:"2021年", group:"海东", note:"紧邻理想邦，270°悬崖海景，摩洛哥风格" },
+  { name:"大理悦莲庄青石半山海景度假酒店", ctrip:"100977487", lat:25.696973,lng:100.268321, addr:"海东镇理想邦C2b-7栋", rooms:"56间", open:"2022年", group:"海东", note:"理想邦小镇内，9.7分，圣托里尼风" },
+  { name:"大理云际壹号悬崖海景酒店", ctrip:"97681483", lat:25.696600,lng:100.269000, addr:"海东镇理想邦C2a区1号院", rooms:"29间", open:"2022年", group:"海东", note:"理想邦小镇，无边泳池，地中海风" },
+  { name:"无双崖屿设计师美宿·洱海", ctrip:"100606704", lat:25.592133,lng:100.229055, addr:"海东镇文笔村委员会文笔村3组", rooms:"15间", open:"2022年", group:"海东", note:"悬崖之上，9.9分！无边泳池" },
+  { name:"你·心里IN YOUR HEART半山海景设计师度假酒店", ctrip:"126737151", lat:25.735200,lng:100.232156, addr:"海东镇文笔村4社78号", rooms:"14间", open:"2025年", group:"海东", note:"文笔村半山，270°全景，无边际泳池" }
+];
+
+// ====== Landmarks ======
+const landmarks = [
+  { name:"大理古城南门", lat:25.685401, lng:100.159741 },
+  { name:"崇圣寺三塔", lat:25.705605, lng:100.147313 },
+  { name:"龙龛码头", lat:25.662000, lng:100.175800 },
+  { name:"才村码头", lat:25.718727, lng:100.193637 },
+  { name:"磻溪S弯", lat:25.775000, lng:100.170000 },
+  { name:"双廊古镇", lat:25.955000, lng:100.270000 },
+  { name:"小普陀", lat:25.790000, lng:100.274000 },
+  { name:"金梭岛", lat:25.692907, lng:100.257743 },
+  { name:"理想邦", lat:25.697244, lng:100.268505 },
+  { name:"洗马潭索道", lat:25.682152, lng:100.148913 },
+  { name:"大理站", lat:25.590000, lng:100.230000 },
+  { name:"大理凤仪机场", lat:25.646965, lng:100.320952 },
+  { name:"喜洲古镇", lat:25.852950, lng:100.131582 },
+  { name:"文笔村", lat:25.630000, lng:100.281000 },
+];
+
+// ====== Map ======
+const map = L.map('map', { attributionControl: false }).setView([25.67, 100.19], 12);
+
+L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+  subdomains: ['1','2','3','4'], maxZoom: 18,
+}).addTo(map);
+
+// Markers ref for fly-to
+const markers = {};
+
+// Hotel icons
+function hotelIcon(color) {
+  return L.divIcon({
+    className: 'hotel-marker',
+    html: '<div style="width:22px;height:22px;border-radius:50%;background:'+color+';border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
+    iconSize:[22,22], iconAnchor:[11,11], popupAnchor:[0,-13]
+  });
+}
+
+// Landmark icon
+function landmarkIcon() {
+  return L.divIcon({
+    className: 'landmark',
+    html: '<div style="width:6px;height:6px;border-radius:2px;background:#888;border:1px solid white;"></div>',
+    iconSize:[6,6], iconAnchor:[3,3], popupAnchor:[0,-5]
+  });
+}
+
+// Add landmarks
+landmarks.forEach(lm => {
+  L.marker([lm.lat, lm.lng], { icon: landmarkIcon(), zIndexOffset: -100 })
+    .addTo(map).bindTooltip(lm.name, { direction:'top', offset:[0,-6], className:'lm-tooltip' });
+});
+
+// Add hotel markers
+hotels.forEach((h, i) => {
+  const color = regionColors[h.group];
+  const m = L.marker([h.lat, h.lng], { icon: hotelIcon(color) }).addTo(map);
+  markers[i] = m;
+
+  const tagClass = h.group==='古城'?'old-town':h.group==='西岸'?'west-bank':h.group==='下关'?'xiaguan':'east-bank';
+
+  m.bindPopup(
+    '<div class="hotel-popup">'+
+      '<h3>'+h.name+'</h3>'+
+      '<div class="addr">📍 '+h.addr+'</div>'+
+      '<div class="meta">🛏 '+h.rooms+' ｜ 🕐 '+h.open+'</div>'+
+      '<div class="meta" style="margin-top:4px;">'+h.note+'</div>'+
+      '<span class="tag tag-'+tagClass+'">'+h.group+'区域</span>'+
+      '<br><a href="https://hotels.ctrip.com/hotels/'+h.ctrip+'.html" target="_blank" class="ctrip-btn">📲 携程预订 →</a>'+
+    '</div>', { maxWidth:300 }
+  );
+});
+
+// ====== Map Legend ======
+const legend = L.control({ position:'bottomleft' });
+legend.onAdd = function() {
+  var d = L.DomUtil.create('div','map-legend');
+  d.innerHTML =
+    '<b>酒店</b> '+
+    '<i style="background:#e07a5f;"></i>古城 <i style="background:#3d85c6;"></i>西岸 <i style="background:#6c5ce7;"></i>下关 <i style="background:#00b894;"></i>海东'+
+    ' <span style="margin-left:6px;"><b>◇</b> 景点地标</span>';
+  return d;
+};
+legend.addTo(map);
+
+// ====== Hotel List ======
+const listEl = document.getElementById('hotelList');
+const groups = ['古城', '西岸', '下关', '海东'];
+const groupNames = { '古城':'古城区域', '西岸':'洱海西岸', '下关':'下关区域', '海东':'海东区域' };
+const emoji = { '古城':'🟠', '西岸':'🔵', '下关':'🟣', '海东':'🟢' };
+
+groups.forEach(g => {
+  const section = document.createElement('div');
+  section.id = 'region-' + (g==='古城'?'oldtown':g==='西岸'?'west':g==='下关'?'xiaguan':'east');
+
+  const title = document.createElement('div');
+  title.className = 'region-title';
+  title.innerHTML = '<span class="region-dot" style="background:'+regionColors[g]+';"></span>'+emoji[g]+' '+groupNames[g]+'（'+hotels.filter(h=>h.group===g).length+'家）';
+  section.appendChild(title);
+
+  hotels.forEach((h, i) => {
+    if (h.group !== g) return;
+    const card = document.createElement('div');
+    card.className = 'hotel-card';
+    card.onclick = function() {
+      map.flyTo([h.lat, h.lng], 16, { duration: 0.8 });
+      setTimeout(() => { markers[i].openPopup(); }, 900);
+    };
+    card.innerHTML =
+      '<div class="idx" style="background:'+regionColors[g]+';">'+(i+1)+'</div>'+
+      '<div class="info">'+
+        '<h3>'+h.name+'</h3>'+
+        '<div class="addr">📍 '+h.addr+'</div>'+
+        '<div class="meta">🛏 '+h.rooms+' ｜ 🕐 '+h.open+' ｜ '+h.note+'</div>'+
+      '</div>'+
+      '<div class="arrow">▸</div>';
+    section.appendChild(card);
+  });
+
+  listEl.appendChild(section);
+});
+
+// ====== Section Nav ======
+document.querySelectorAll('#sectionNav a').forEach(a => {
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('#sectionNav a').forEach(x => x.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById(this.getAttribute('href').substring(1)).scrollIntoView({ behavior:'smooth' });
+  });
+});
+</script>
+</body>
+</html>
